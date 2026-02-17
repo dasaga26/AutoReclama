@@ -7,8 +7,8 @@ const mobileMenuOpen = ref(false)
 
 const links = [
     { to: '/', label: 'Inicio', icon: 'home' },
-    { to: '/registro-cliente', label: 'Registrar Cliente', icon: 'person_add' },
-    { to: '/registro-vehiculo', label: 'Registrar Vehículo', icon: 'directions_car' },
+    { to: '/verificar', label: 'Verificar Vehículo', icon: 'search' },
+    { to: '/consultar', label: 'Consultar Estado', icon: 'fact_check' },
     { to: '/admin', label: 'Admin', icon: 'admin_panel_settings' }
 ]
 </script>

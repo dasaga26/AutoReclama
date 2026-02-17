@@ -2,7 +2,6 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import BaseInput from '../components/BaseInput.vue'
 import ButtonPrimary from '../components/ButtonPrimary.vue'
-import SelectField from '../components/SelectField.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import ModalConfirm from '../components/ModalConfirm.vue'
 
@@ -72,16 +71,14 @@ async function login() {
 async function cargarDatos() {
     loading.value = true
     try {
-        const resC = await fetch(`${API}/clientes`)
+        const resC = await fetch(`${API}/admin/clientes`)
         clientes.value = await resC.json()
 
-        const resV = await fetch(`${API}/vehiculos`)
-        const vehiculos = await resV.json()
         const agrupados = {}
-        vehiculos.forEach(v => {
-            if (!agrupados[v.clienteId]) agrupados[v.clienteId] = []
-            agrupados[v.clienteId].push(v)
-        })
+        for (const c of clientes.value) {
+            const resV = await fetch(`${API}/admin/clientes/${c.id}/vehiculos`)
+            agrupados[c.id] = await resV.json()
+        }
         vehiculosPorCliente.value = agrupados
     } catch {
         console.error('Error al cargar datos')
@@ -92,7 +89,7 @@ async function cargarDatos() {
 
 async function cambiarEstado(clienteId, nuevoEstado) {
     try {
-        await fetch(`${API}/clientes/${clienteId}/estado`, {
+        await fetch(`${API}/admin/clientes/${clienteId}/estado`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ estado: nuevoEstado })
@@ -111,7 +108,7 @@ function confirmarEliminar(cliente) {
 async function eliminarCliente() {
     if (!clienteAEliminar.value) return
     try {
-        await fetch(`${API}/clientes/${clienteAEliminar.value.id}`, { method: 'DELETE' })
+        await fetch(`${API}/admin/clientes/${clienteAEliminar.value.id}`, { method: 'DELETE' })
         showDeleteModal.value = false
         clienteAEliminar.value = null
         cargarDatos()
@@ -120,7 +117,6 @@ async function eliminarCliente() {
     }
 }
 
-// Detalles expandibles
 const expandedCliente = ref(null)
 function toggleExpand(id) {
     expandedCliente.value = expandedCliente.value === id ? null : id
@@ -141,19 +137,8 @@ function toggleExpand(id) {
 
             <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
                 <form @submit.prevent="login">
-                    <BaseInput
-                        v-model="loginForm.usuario"
-                        label="Usuario"
-                        placeholder="admin"
-                        :required="true"
-                    />
-                    <BaseInput
-                        v-model="loginForm.password"
-                        label="Contraseña"
-                        type="password"
-                        placeholder="••••••••"
-                        :required="true"
-                    />
+                    <BaseInput v-model="loginForm.usuario" label="Usuario" placeholder="admin" :required="true" />
+                    <BaseInput v-model="loginForm.password" label="Contraseña" type="password" placeholder="••••••••" :required="true" />
                     <div class="mt-4">
                         <ButtonPrimary type="submit" text="Iniciar Sesión" icon="login" />
                     </div>
@@ -173,16 +158,13 @@ function toggleExpand(id) {
                 <h1 class="text-4xl font-bold text-slate-900 dark:text-white mb-2">Panel de Incidencias</h1>
                 <p class="text-lg text-slate-600 dark:text-slate-400">Gestiona clientes, vehículos y estados de reclamación</p>
             </div>
-            <button
-                @click="loggedIn = false"
-                class="self-start px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-2"
-            >
+            <button @click="loggedIn = false" class="self-start px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-2">
                 <span class="material-icons text-sm">logout</span>
                 Cerrar Sesión
             </button>
         </div>
 
-        <!-- Estadísticas -->
+        <!-- Stats -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-center">
                 <div class="text-3xl font-bold text-slate-900 dark:text-white">{{ estadisticas.total }}</div>
@@ -206,51 +188,34 @@ function toggleExpand(id) {
             </div>
         </div>
 
-        <!-- Filtros -->
+        <!-- Filters -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-6 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center">
             <div class="relative flex-grow">
                 <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-                <input
-                    v-model="busqueda"
-                    type="text"
-                    placeholder="Buscar por DNI, nombre o email..."
-                    aria-label="Buscar clientes"
-                    class="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary text-sm"
-                />
+                <input v-model="busqueda" type="text" placeholder="Buscar por DNI, nombre o email..." aria-label="Buscar clientes" class="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary text-sm" />
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button
-                    v-for="e in estados"
-                    :key="e"
-                    @click="filtroEstado = e"
-                    class="px-3 py-2 rounded-lg text-xs font-medium transition-all capitalize"
-                    :class="filtroEstado === e
-                        ? 'bg-primary text-white shadow-sm'
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'"
-                >
+                <button v-for="e in estados" :key="e" @click="filtroEstado = e" class="px-3 py-2 rounded-lg text-xs font-medium transition-all capitalize" :class="filtroEstado === e ? 'bg-primary text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'">
                     {{ e }}
                 </button>
             </div>
         </div>
 
-        <!-- Lista de clientes -->
+        <!-- Loading -->
         <div v-if="loading" class="text-center py-12">
             <span class="material-icons text-4xl text-primary animate-spin">autorenew</span>
         </div>
 
+        <!-- Empty -->
         <div v-else-if="clientesFiltrados.length === 0" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-12 text-center">
             <span class="material-icons text-5xl text-slate-300 dark:text-slate-600 mb-4 block">search_off</span>
             <p class="text-slate-500 dark:text-slate-400">No se encontraron clientes con los filtros actuales</p>
             <button @click="filtroEstado = 'todos'; busqueda = ''" class="mt-4 text-primary text-sm hover:underline">Limpiar filtros</button>
         </div>
 
+        <!-- List -->
         <div v-else class="space-y-4">
-            <div
-                v-for="cliente in clientesFiltrados"
-                :key="cliente.id"
-                class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-            >
-                <!-- Cliente header -->
+            <div v-for="cliente in clientesFiltrados" :key="cliente.id" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                 <div class="p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer" @click="toggleExpand(cliente.id)">
                     <div class="flex items-center gap-4 flex-grow min-w-0">
                         <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -258,7 +223,7 @@ function toggleExpand(id) {
                         </div>
                         <div class="min-w-0">
                             <p class="font-semibold text-slate-900 dark:text-white truncate">{{ cliente.nombre }} {{ cliente.apellidos }}</p>
-                            <p class="text-sm text-slate-500 flex items-center gap-3">
+                            <p class="text-sm text-slate-500 flex items-center gap-3 flex-wrap">
                                 <span class="font-mono">{{ cliente.dni }}</span>
                                 <span>{{ cliente.email }}</span>
                             </p>
@@ -270,63 +235,35 @@ function toggleExpand(id) {
                     </div>
                 </div>
 
-                <!-- Expandido: detalles -->
                 <Transition name="expand">
                     <div v-if="expandedCliente === cliente.id" class="border-t border-slate-200 dark:border-slate-700 px-5 py-5 bg-slate-50 dark:bg-slate-800/50">
                         <div class="grid md:grid-cols-2 gap-6">
-                            <!-- Info -->
                             <div>
                                 <h4 class="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-1">
                                     <span class="material-icons text-sm text-primary">info</span> Información
                                 </h4>
                                 <div class="space-y-2 text-sm">
-                                    <div class="flex justify-between">
-                                        <span class="text-slate-500">Teléfono:</span>
-                                        <span class="text-slate-900 dark:text-white">{{ cliente.telefono }}</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-slate-500">Email:</span>
-                                        <span class="text-slate-900 dark:text-white">{{ cliente.email }}</span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-slate-500">Fecha registro:</span>
-                                        <span class="text-slate-900 dark:text-white">{{ cliente.fechaRegistro }}</span>
-                                    </div>
+                                    <div class="flex justify-between"><span class="text-slate-500">Teléfono:</span><span class="text-slate-900 dark:text-white">{{ cliente.telefono }}</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-500">Email:</span><span class="text-slate-900 dark:text-white">{{ cliente.email }}</span></div>
+                                    <div class="flex justify-between"><span class="text-slate-500">Registro:</span><span class="text-slate-900 dark:text-white">{{ cliente.fecha_registro }}</span></div>
                                 </div>
-
                                 <h4 class="text-sm font-bold text-slate-900 dark:text-white mt-5 mb-3 flex items-center gap-1">
                                     <span class="material-icons text-sm text-primary">edit</span> Cambiar Estado
                                 </h4>
                                 <div class="flex gap-2 flex-wrap">
-                                    <button
-                                        v-for="e in ['pendiente', 'en trámite', 'resuelto', 'rechazado']"
-                                        :key="e"
-                                        @click.stop="cambiarEstado(cliente.id, e)"
-                                        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize"
-                                        :class="cliente.estado === e
-                                            ? 'bg-primary text-white'
-                                            : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary hover:text-primary'"
-                                    >
+                                    <button v-for="e in ['pendiente', 'en trámite', 'resuelto', 'rechazado']" :key="e" @click.stop="cambiarEstado(cliente.id, e)" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize" :class="cliente.estado === e ? 'bg-primary text-white' : 'bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-primary hover:text-primary'">
                                         {{ e }}
                                     </button>
                                 </div>
                             </div>
-
-                            <!-- Vehiculos -->
                             <div>
                                 <h4 class="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-1">
                                     <span class="material-icons text-sm text-primary">directions_car</span>
                                     Vehículos ({{ (vehiculosPorCliente[cliente.id] || []).length }})
                                 </h4>
-                                <div v-if="!vehiculosPorCliente[cliente.id] || vehiculosPorCliente[cliente.id].length === 0" class="text-sm text-slate-500 italic">
-                                    Sin vehículos registrados
-                                </div>
+                                <div v-if="!vehiculosPorCliente[cliente.id] || vehiculosPorCliente[cliente.id].length === 0" class="text-sm text-slate-500 italic">Sin vehículos</div>
                                 <div v-else class="space-y-2">
-                                    <div
-                                        v-for="v in vehiculosPorCliente[cliente.id]"
-                                        :key="v.id"
-                                        class="bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 p-3 text-sm"
-                                    >
+                                    <div v-for="v in vehiculosPorCliente[cliente.id]" :key="v.id" class="bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 p-3 text-sm">
                                         <div class="flex justify-between items-center">
                                             <span class="font-mono font-bold text-primary">{{ v.matricula }}</span>
                                             <span class="text-slate-500 text-xs">{{ v.anio }}</span>
@@ -337,13 +274,8 @@ function toggleExpand(id) {
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Acciones -->
                         <div class="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
-                            <button
-                                @click.stop="confirmarEliminar(cliente)"
-                                class="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center gap-2"
-                            >
+                            <button @click.stop="confirmarEliminar(cliente)" class="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-900/20 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center gap-2">
                                 <span class="material-icons text-sm">delete</span>
                                 Eliminar cliente
                             </button>
@@ -353,29 +285,12 @@ function toggleExpand(id) {
             </div>
         </div>
 
-        <ModalConfirm
-            :show="showDeleteModal"
-            title="Eliminar Cliente"
-            :message="clienteAEliminar ? `¿Estás seguro de que quieres eliminar a ${clienteAEliminar.nombre} ${clienteAEliminar.apellidos}? Se eliminarán también todos sus vehículos.` : ''"
-            @confirm="eliminarCliente"
-            @cancel="showDeleteModal = false"
-        />
+        <ModalConfirm :show="showDeleteModal" title="Eliminar Cliente" :message="clienteAEliminar ? `¿Seguro que quieres eliminar a ${clienteAEliminar.nombre} ${clienteAEliminar.apellidos}? Se eliminarán todos sus vehículos.` : ''" @confirm="eliminarCliente" @cancel="showDeleteModal = false" />
     </div>
 </template>
 
 <style scoped>
-.expand-enter-active,
-.expand-leave-active {
-    transition: all 0.3s ease;
-    overflow: hidden;
-}
-.expand-enter-from,
-.expand-leave-to {
-    opacity: 0;
-    max-height: 0;
-}
-.expand-enter-to,
-.expand-leave-from {
-    max-height: 500px;
-}
+.expand-enter-active, .expand-leave-active { transition: all 0.3s ease; overflow: hidden; }
+.expand-enter-from, .expand-leave-to { opacity: 0; max-height: 0; }
+.expand-enter-to, .expand-leave-from { max-height: 500px; }
 </style>

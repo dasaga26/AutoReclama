@@ -1,8 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
+const Database = require('better-sqlite3');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = 3000;
@@ -10,181 +10,154 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
-// Rutas a los archivos JSON
-const CLIENTES_FILE = path.join(__dirname, 'data', 'clientes.json');
-const VEHICULOS_FILE = path.join(__dirname, 'data', 'vehiculos.json');
+// Base de datos SQLite
+const db = new Database(path.join(__dirname, 'autoreclama.db'));
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
-// Helpers para leer/escribir JSON
-function leerJSON(archivo) {
-    try {
-        const data = fs.readFileSync(archivo, 'utf-8');
-        return JSON.parse(data);
-    } catch {
-        return [];
-    }
+// Crear tablas
+db.exec(`
+    CREATE TABLE IF NOT EXISTS clientes (
+        id TEXT PRIMARY KEY,
+        dni TEXT UNIQUE NOT NULL,
+        nombre TEXT NOT NULL,
+        apellidos TEXT NOT NULL,
+        telefono TEXT NOT NULL,
+        email TEXT NOT NULL,
+        fecha_registro TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente'
+    );
+
+    CREATE TABLE IF NOT EXISTS vehiculos (
+        id TEXT PRIMARY KEY,
+        matricula TEXT UNIQUE NOT NULL,
+        marca TEXT NOT NULL,
+        modelo TEXT NOT NULL,
+        anio INTEGER NOT NULL,
+        color TEXT,
+        puertas INTEGER,
+        observaciones TEXT,
+        cliente_id TEXT NOT NULL,
+        FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
+    );
+`);
+
+// Marcas afectadas por el cartel (2006-2013)
+const MARCAS_AFECTADAS = [
+    'Seat', 'Volkswagen', 'Audi', 'BMW', 'Mercedes',
+    'Renault', 'Peugeot', 'Citroën', 'Ford', 'Opel',
+    'Toyota', 'Hyundai', 'Fiat', 'Skoda', 'Nissan',
+    'Kia', 'Volvo', 'Honda', 'Mazda', 'Chevrolet'
+];
+
+function generarId() {
+    return crypto.randomUUID();
 }
 
-function escribirJSON(archivo, data) {
-    fs.writeFileSync(archivo, JSON.stringify(data, null, 2), 'utf-8');
-}
+// ========== VERIFICAR ELEGIBILIDAD ==========
 
-// ============ CLIENTES ============
+app.get('/api/verificar', (req, res) => {
+    const { marca, anio } = req.query;
 
-// Obtener todos los clientes
-app.get('/api/clientes', (req, res) => {
-    const clientes = leerJSON(CLIENTES_FILE);
-    res.json(clientes);
-});
-
-// Obtener un cliente por ID
-app.get('/api/clientes/:id', (req, res) => {
-    const clientes = leerJSON(CLIENTES_FILE);
-    const cliente = clientes.find(c => c.id === req.params.id);
-    if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-    res.json(cliente);
-});
-
-// Crear cliente
-app.post('/api/clientes', (req, res) => {
-    const clientes = leerJSON(CLIENTES_FILE);
-    const { dni, nombre, apellidos, telefono, email } = req.body;
-
-    // Validar DNI unico
-    if (clientes.find(c => c.dni === dni)) {
-        return res.status(400).json({ error: 'Ya existe un cliente con ese DNI' });
+    if (!marca || !anio) {
+        return res.status(400).json({ error: 'Marca y año son obligatorios' });
     }
 
-    const nuevoCliente = {
-        id: uuidv4(),
-        dni,
-        nombre,
-        apellidos,
-        telefono,
-        email,
-        fechaRegistro: new Date().toISOString().split('T')[0],
-        estado: 'pendiente'
-    };
+    const anioNum = parseInt(anio);
+    const elegible = MARCAS_AFECTADAS.includes(marca) && anioNum >= 2006 && anioNum <= 2013;
 
-    clientes.push(nuevoCliente);
-    escribirJSON(CLIENTES_FILE, clientes);
-    res.status(201).json(nuevoCliente);
-});
-
-// Actualizar cliente
-app.put('/api/clientes/:id', (req, res) => {
-    const clientes = leerJSON(CLIENTES_FILE);
-    const index = clientes.findIndex(c => c.id === req.params.id);
-    if (index === -1) return res.status(404).json({ error: 'Cliente no encontrado' });
-
-    clientes[index] = { ...clientes[index], ...req.body, id: clientes[index].id };
-    escribirJSON(CLIENTES_FILE, clientes);
-    res.json(clientes[index]);
-});
-
-// Cambiar estado de resolucion
-app.put('/api/clientes/:id/estado', (req, res) => {
-    const clientes = leerJSON(CLIENTES_FILE);
-    const index = clientes.findIndex(c => c.id === req.params.id);
-    if (index === -1) return res.status(404).json({ error: 'Cliente no encontrado' });
-
-    const { estado } = req.body;
-    const estadosValidos = ['pendiente', 'en trámite', 'resuelto', 'rechazado'];
-    if (!estadosValidos.includes(estado)) {
-        return res.status(400).json({ error: 'Estado no valido' });
-    }
-
-    clientes[index].estado = estado;
-    escribirJSON(CLIENTES_FILE, clientes);
-    res.json(clientes[index]);
-});
-
-// Eliminar cliente
-app.delete('/api/clientes/:id', (req, res) => {
-    let clientes = leerJSON(CLIENTES_FILE);
-    const existe = clientes.find(c => c.id === req.params.id);
-    if (!existe) return res.status(404).json({ error: 'Cliente no encontrado' });
-
-    // Eliminar tambien los vehiculos asociados
-    let vehiculos = leerJSON(VEHICULOS_FILE);
-    vehiculos = vehiculos.filter(v => v.clienteId !== req.params.id);
-    escribirJSON(VEHICULOS_FILE, vehiculos);
-
-    clientes = clientes.filter(c => c.id !== req.params.id);
-    escribirJSON(CLIENTES_FILE, clientes);
-    res.json({ mensaje: 'Cliente y sus vehiculos eliminados' });
-});
-
-// ============ VEHICULOS ============
-
-// Obtener todos los vehiculos
-app.get('/api/vehiculos', (req, res) => {
-    const vehiculos = leerJSON(VEHICULOS_FILE);
-    res.json(vehiculos);
-});
-
-// Obtener vehiculos de un cliente
-app.get('/api/vehiculos/cliente/:clienteId', (req, res) => {
-    const vehiculos = leerJSON(VEHICULOS_FILE);
-    const vehiculosCliente = vehiculos.filter(v => v.clienteId === req.params.clienteId);
-    res.json(vehiculosCliente);
-});
-
-// Crear vehiculo
-app.post('/api/vehiculos', (req, res) => {
-    const vehiculos = leerJSON(VEHICULOS_FILE);
-    const { matricula, marca, modelo, anio, color, puertas, observaciones, clienteId } = req.body;
-
-    // Verificar que el cliente existe
-    const clientes = leerJSON(CLIENTES_FILE);
-    if (!clientes.find(c => c.id === clienteId)) {
-        return res.status(400).json({ error: 'El cliente no existe' });
-    }
-
-    // Validar matricula unica
-    if (vehiculos.find(v => v.matricula === matricula)) {
-        return res.status(400).json({ error: 'Ya existe un vehiculo con esa matricula' });
-    }
-
-    const nuevoVehiculo = {
-        id: uuidv4(),
-        matricula,
+    res.json({
+        elegible,
         marca,
-        modelo,
-        anio,
-        color,
-        puertas,
-        observaciones,
-        clienteId
-    };
-
-    vehiculos.push(nuevoVehiculo);
-    escribirJSON(VEHICULOS_FILE, vehiculos);
-    res.status(201).json(nuevoVehiculo);
+        anio: anioNum,
+        mensaje: elegible
+            ? 'Tu vehículo está afectado por el cártel de coches. Puedes registrar tu reclamación.'
+            : 'Tu vehículo no está afectado por el cártel o no cumple los requisitos de fecha.'
+    });
 });
 
-// Actualizar vehiculo
-app.put('/api/vehiculos/:id', (req, res) => {
-    const vehiculos = leerJSON(VEHICULOS_FILE);
-    const index = vehiculos.findIndex(v => v.id === req.params.id);
-    if (index === -1) return res.status(404).json({ error: 'Vehiculo no encontrado' });
+// ========== RECLAMACIONES (USUARIO) ==========
 
-    vehiculos[index] = { ...vehiculos[index], ...req.body, id: vehiculos[index].id };
-    escribirJSON(VEHICULOS_FILE, vehiculos);
-    res.json(vehiculos[index]);
+// Crear reclamación (cliente + vehículo en una transacción)
+app.post('/api/reclamaciones', (req, res) => {
+    const { dni, nombre, apellidos, telefono, email, matricula, marca, modelo, anio, color, puertas, observaciones } = req.body;
+
+    const crearReclamacion = db.transaction(() => {
+        // Comprobar si el cliente ya existe por DNI
+        let cliente = db.prepare('SELECT * FROM clientes WHERE dni = ?').get(dni);
+
+        if (!cliente) {
+            const clienteId = generarId();
+            db.prepare(`
+                INSERT INTO clientes (id, dni, nombre, apellidos, telefono, email, fecha_registro, estado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente')
+            `).run(clienteId, dni, nombre, apellidos, telefono, email, new Date().toISOString().split('T')[0]);
+            cliente = { id: clienteId };
+        }
+
+        // Comprobar matricula duplicada
+        const vehiculoExistente = db.prepare('SELECT * FROM vehiculos WHERE matricula = ?').get(matricula);
+        if (vehiculoExistente) {
+            throw new Error('Ya existe un vehículo con esa matrícula');
+        }
+
+        const vehiculoId = generarId();
+        db.prepare(`
+            INSERT INTO vehiculos (id, matricula, marca, modelo, anio, color, puertas, observaciones, cliente_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(vehiculoId, matricula.toUpperCase(), marca, modelo, parseInt(anio), color || null, puertas ? parseInt(puertas) : null, observaciones || null, cliente.id);
+
+        return { clienteId: cliente.id, vehiculoId };
+    });
+
+    try {
+        const resultado = crearReclamacion();
+        res.status(201).json({ ok: true, mensaje: 'Reclamación registrada correctamente', ...resultado });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
 });
 
-// Eliminar vehiculo
-app.delete('/api/vehiculos/:id', (req, res) => {
-    let vehiculos = leerJSON(VEHICULOS_FILE);
-    const existe = vehiculos.find(v => v.id === req.params.id);
-    if (!existe) return res.status(404).json({ error: 'Vehiculo no encontrado' });
+// Consultar reclamaciones por DNI
+app.get('/api/reclamaciones/:dni', (req, res) => {
+    const cliente = db.prepare('SELECT * FROM clientes WHERE dni = ?').get(req.params.dni);
+    if (!cliente) {
+        return res.status(404).json({ error: 'No se encontraron reclamaciones con ese DNI' });
+    }
 
-    vehiculos = vehiculos.filter(v => v.id !== req.params.id);
-    escribirJSON(VEHICULOS_FILE, vehiculos);
-    res.json({ mensaje: 'Vehiculo eliminado' });
+    const vehiculos = db.prepare('SELECT * FROM vehiculos WHERE cliente_id = ?').all(cliente.id);
+
+    res.json({ cliente, vehiculos });
 });
 
-// ============ ADMIN ============
+// Añadir otro vehículo a un cliente existente (por DNI)
+app.post('/api/reclamaciones/:dni/vehiculos', (req, res) => {
+    const cliente = db.prepare('SELECT * FROM clientes WHERE dni = ?').get(req.params.dni);
+    if (!cliente) {
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    const { matricula, marca, modelo, anio, color, puertas, observaciones } = req.body;
+
+    const vehiculoExistente = db.prepare('SELECT * FROM vehiculos WHERE matricula = ?').get(matricula);
+    if (vehiculoExistente) {
+        return res.status(400).json({ error: 'Ya existe un vehículo con esa matrícula' });
+    }
+
+    try {
+        const vehiculoId = generarId();
+        db.prepare(`
+            INSERT INTO vehiculos (id, matricula, marca, modelo, anio, color, puertas, observaciones, cliente_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(vehiculoId, matricula.toUpperCase(), marca, modelo, parseInt(anio), color || null, puertas ? parseInt(puertas) : null, observaciones || null, cliente.id);
+
+        res.status(201).json({ ok: true, vehiculoId });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// ========== ADMIN ==========
 
 app.post('/api/admin/login', (req, res) => {
     const { usuario, password } = req.body;
@@ -192,6 +165,43 @@ app.post('/api/admin/login', (req, res) => {
         return res.json({ ok: true, mensaje: 'Login correcto' });
     }
     res.status(401).json({ ok: false, error: 'Credenciales incorrectas' });
+});
+
+// Listar todos los clientes
+app.get('/api/admin/clientes', (req, res) => {
+    const clientes = db.prepare('SELECT * FROM clientes ORDER BY fecha_registro DESC').all();
+    res.json(clientes);
+});
+
+// Obtener vehículos de un cliente
+app.get('/api/admin/clientes/:id/vehiculos', (req, res) => {
+    const vehiculos = db.prepare('SELECT * FROM vehiculos WHERE cliente_id = ?').all(req.params.id);
+    res.json(vehiculos);
+});
+
+// Cambiar estado de resolución
+app.put('/api/admin/clientes/:id/estado', (req, res) => {
+    const { estado } = req.body;
+    const estadosValidos = ['pendiente', 'en trámite', 'resuelto', 'rechazado'];
+    if (!estadosValidos.includes(estado)) {
+        return res.status(400).json({ error: 'Estado no válido' });
+    }
+
+    const result = db.prepare('UPDATE clientes SET estado = ? WHERE id = ?').run(estado, req.params.id);
+    if (result.changes === 0) {
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    res.json({ ok: true, mensaje: 'Estado actualizado' });
+});
+
+// Eliminar cliente (cascada elimina vehículos)
+app.delete('/api/admin/clientes/:id', (req, res) => {
+    const result = db.prepare('DELETE FROM clientes WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) {
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    res.json({ ok: true, mensaje: 'Cliente y sus vehículos eliminados' });
 });
 
 // Arrancar servidor
