@@ -1,16 +1,17 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import BaseInput from '../components/BaseInput.vue'
-import ButtonPrimary from '../components/ButtonPrimary.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 
 const API = 'http://localhost:3000/api'
+const DNI_KEY = 'autoreclama_dni'
 
 const dni = ref('')
 const dniError = ref('')
 const loading = ref(false)
 const buscado = ref(false)
 const noEncontrado = ref(false)
+const dniGuardado = ref(false)
 
 const cliente = ref(null)
 const vehiculos = ref([])
@@ -48,12 +49,34 @@ async function buscar() {
         cliente.value = data.cliente
         vehiculos.value = data.vehiculos
         buscado.value = true
+        // Guardar DNI para futuras visitas
+        localStorage.setItem(DNI_KEY, dni.value)
+        dniGuardado.value = true
     } catch {
         dniError.value = 'Error de conexión con el servidor'
     } finally {
         loading.value = false
     }
 }
+
+function olvidarDni() {
+    localStorage.removeItem(DNI_KEY)
+    dniGuardado.value = false
+    dni.value = ''
+    buscado.value = false
+    noEncontrado.value = false
+    cliente.value = null
+    vehiculos.value = []
+}
+
+onMounted(() => {
+    const saved = localStorage.getItem(DNI_KEY)
+    if (saved) {
+        dni.value = saved
+        dniGuardado.value = true
+        buscar()
+    }
+})
 </script>
 
 <template>
@@ -63,26 +86,62 @@ async function buscar() {
                 <span class="material-icons text-primary text-4xl">fact_check</span>
             </div>
             <h1 class="text-4xl font-bold text-slate-900 dark:text-white mb-3">Consultar Estado</h1>
-            <p class="text-lg text-slate-600 dark:text-slate-400">Introduce tu DNI para ver el estado de tu reclamación</p>
+            <p class="text-lg text-slate-600 dark:text-slate-400">Consulta el estado de tu reclamación en cualquier momento</p>
         </div>
 
-        <!-- Buscador -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm mb-8">
-            <form @submit.prevent="buscar" class="flex flex-col sm:flex-row gap-3">
-                <div class="flex-grow">
-                    <BaseInput
-                        v-model="dni"
-                        label="DNI"
-                        placeholder="12345678A"
-                        :error="dniError"
-                        :required="true"
-                    />
-                </div>
-                <div class="sm:pt-6">
-                    <ButtonPrimary type="submit" text="Buscar" icon="search" :disabled="loading" />
-                </div>
-            </form>
-        </div>
+        <!-- Banner: sesión guardada -->
+        <Transition name="fade">
+            <div v-if="dniGuardado && cliente" class="mb-6 flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
+                <span class="material-icons text-primary text-base">person_pin</span>
+                <span class="text-slate-700 dark:text-slate-300">
+                    Viendo datos de <strong class="font-mono text-slate-900 dark:text-white">{{ dni }}</strong>
+                </span>
+                <button
+                    type="button"
+                    @click="olvidarDni"
+                    class="ml-auto text-xs text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors flex items-center gap-1"
+                >
+                    <span class="material-icons text-xs">logout</span>
+                    No soy yo
+                </button>
+            </div>
+        </Transition>
+
+        <!-- Buscador (oculto cuando hay sesión guardada y resultados cargados) -->
+        <Transition name="fade">
+            <div v-if="!dniGuardado || !buscado" class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm mb-8">
+                <form @submit.prevent="buscar" class="flex flex-col sm:flex-row gap-3">
+                    <div class="flex-grow">
+                        <BaseInput
+                            v-model="dni"
+                            label="DNI"
+                            placeholder="12345678A"
+                            :error="dniError"
+                            :required="true"
+                        />
+                    </div>
+                    <div class="sm:pt-6">
+                        <button
+                            type="submit"
+                            :disabled="loading"
+                            class="px-6 py-3 rounded-lg font-semibold text-sm shadow-sm transition-all duration-200 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white hover:shadow-lg hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed min-w-[110px]"
+                        >
+                            <template v-if="loading">
+                                <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                Buscando...
+                            </template>
+                            <template v-else>
+                                <span class="material-icons text-sm">search</span>
+                                Buscar
+                            </template>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </Transition>
 
         <!-- No encontrado -->
         <Transition name="fade">

@@ -2,7 +2,6 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import SelectField from '../components/SelectField.vue'
-import ButtonPrimary from '../components/ButtonPrimary.vue'
 
 const API = 'http://localhost:3000/api'
 const router = useRouter()
@@ -67,6 +66,25 @@ function irAReclamar() {
 
 <template>
     <div class="max-w-3xl mx-auto px-6 py-12">
+
+        <!-- Breadcrumb de pasos del proceso -->
+        <nav class="flex items-center justify-center gap-2 mb-10 text-sm">
+            <div class="flex items-center gap-1.5 font-semibold text-primary">
+                <span class="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold shrink-0">1</span>
+                Verificar
+            </div>
+            <span class="material-icons text-slate-300 dark:text-slate-600 text-base">chevron_right</span>
+            <div class="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
+                <span class="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-600 flex items-center justify-center text-xs font-bold shrink-0">2</span>
+                Registrar
+            </div>
+            <span class="material-icons text-slate-300 dark:text-slate-600 text-base">chevron_right</span>
+            <div class="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
+                <span class="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-600 flex items-center justify-center text-xs font-bold shrink-0">3</span>
+                Consultar
+            </div>
+        </nav>
+
         <div class="mb-10 text-center">
             <div class="w-20 h-20 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6">
                 <span class="material-icons text-primary text-4xl">search</span>
@@ -89,7 +107,7 @@ function irAReclamar() {
                         v-model="form.modelo"
                         label="Modelo"
                         :options="modelosDisponibles"
-                        placeholder="Selecciona modelo"
+                        :placeholder="form.marca ? 'Selecciona modelo' : 'Primero elige marca'"
                     />
                     <SelectField
                         v-model="form.anio"
@@ -100,12 +118,23 @@ function irAReclamar() {
                     />
                 </div>
                 <div class="mt-6 text-center">
-                    <ButtonPrimary
+                    <button
                         type="submit"
-                        text="Comprobar Elegibilidad"
-                        icon="search"
                         :disabled="!form.marca || !form.anio || loading"
-                    />
+                        class="px-6 py-3 rounded-lg font-semibold text-sm shadow-sm transition-all duration-200 inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white hover:shadow-lg hover:shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed min-w-[220px]"
+                    >
+                        <template v-if="loading">
+                            <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            Comprobando...
+                        </template>
+                        <template v-else>
+                            <span class="material-icons text-sm">search</span>
+                            Comprobar Elegibilidad
+                        </template>
+                    </button>
                 </div>
             </form>
         </div>
@@ -114,31 +143,65 @@ function irAReclamar() {
         <Transition name="fade">
             <div v-if="resultado" class="mt-8">
                 <!-- Elegible -->
-                <div v-if="resultado.elegible" class="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 p-8 text-center">
-                    <div class="w-16 h-16 mx-auto bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center mb-4">
-                        <span class="material-icons text-emerald-600 text-3xl">check_circle</span>
-                    </div>
-                    <h2 class="text-2xl font-bold text-emerald-800 dark:text-emerald-300 mb-2">¡Tu vehículo es elegible!</h2>
-                    <p class="text-emerald-700 dark:text-emerald-400 mb-6">{{ resultado.mensaje }}</p>
-                    <div class="flex flex-col sm:flex-row gap-3 justify-center">
-                        <button
-                            @click="irAReclamar"
-                            class="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-emerald-600/20 inline-flex items-center justify-center gap-2"
-                        >
-                            <span class="material-icons">edit_note</span>
-                            Registrar mi Reclamación
-                        </button>
+                <div v-if="resultado.elegible" class="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border-2 border-emerald-300 dark:border-emerald-700 p-8">
+                    <div class="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                        <div class="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center shrink-0">
+                            <span class="material-icons text-emerald-600 text-3xl">check_circle</span>
+                        </div>
+                        <div class="flex-1 text-center sm:text-left">
+                            <h2 class="text-2xl font-bold text-emerald-800 dark:text-emerald-300 mb-1">¡Tu vehículo es elegible!</h2>
+                            <p class="text-emerald-700 dark:text-emerald-400 mb-4">{{ resultado.mensaje }}</p>
+
+                            <!-- Chip resumen del vehículo -->
+                            <div class="inline-flex items-center gap-3 bg-white dark:bg-slate-800 rounded-lg border border-emerald-200 dark:border-emerald-800 px-4 py-2 mb-5 shadow-sm">
+                                <span class="material-icons text-emerald-500 text-xl">directions_car</span>
+                                <div class="text-sm text-left">
+                                    <p class="font-bold text-slate-900 dark:text-white">
+                                        {{ form.marca }}{{ form.modelo ? ' ' + form.modelo : '' }}
+                                    </p>
+                                    <p class="text-slate-500 dark:text-slate-400">Comprado en {{ form.anio }}</p>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <button
+                                    @click="irAReclamar"
+                                    class="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-emerald-600/20 inline-flex items-center justify-center gap-2"
+                                >
+                                    <span class="material-icons">edit_note</span>
+                                    Registrar mi Reclamación
+                                </button>
+                                <button
+                                    @click="resultado = null"
+                                    class="bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 px-5 py-3 rounded-lg font-semibold transition-all hover:border-emerald-400 inline-flex items-center justify-center gap-2 text-sm"
+                                >
+                                    <span class="material-icons text-sm">refresh</span>
+                                    Cambiar vehículo
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- No elegible -->
-                <div v-else class="bg-slate-50 dark:bg-slate-800 rounded-xl border-2 border-slate-200 dark:border-slate-700 p-8 text-center">
-                    <div class="w-16 h-16 mx-auto bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center mb-4">
-                        <span class="material-icons text-slate-500 text-3xl">info</span>
+                <div v-else class="bg-slate-50 dark:bg-slate-800 rounded-xl border-2 border-slate-200 dark:border-slate-700 p-8">
+                    <div class="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                        <div class="w-16 h-16 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center shrink-0">
+                            <span class="material-icons text-slate-500 text-3xl">info</span>
+                        </div>
+                        <div class="flex-1 text-center sm:text-left">
+                            <h2 class="text-2xl font-bold text-slate-700 dark:text-slate-300 mb-1">Vehículo no afectado</h2>
+                            <p class="text-slate-600 dark:text-slate-400 mb-2">{{ resultado.mensaje }}</p>
+                            <p class="text-sm text-slate-500 mb-5">Solo están afectados vehículos comprados entre 2006 y 2013 de marcas participantes en el cártel.</p>
+                            <button
+                                @click="resultado = null"
+                                class="text-sm text-primary hover:underline inline-flex items-center gap-1"
+                            >
+                                <span class="material-icons text-sm">refresh</span>
+                                Probar con otro vehículo
+                            </button>
+                        </div>
                     </div>
-                    <h2 class="text-2xl font-bold text-slate-700 dark:text-slate-300 mb-2">Vehículo no afectado</h2>
-                    <p class="text-slate-600 dark:text-slate-400 mb-4">{{ resultado.mensaje }}</p>
-                    <p class="text-sm text-slate-500">Solo están afectados vehículos comprados entre 2006 y 2013 de marcas participantes en el cártel.</p>
                 </div>
             </div>
         </Transition>
