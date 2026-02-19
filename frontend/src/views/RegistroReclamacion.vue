@@ -190,7 +190,28 @@ async function guardar() {
     }
 }
 
-onMounted(() => {
+const datosPrecargados = ref(false)
+
+onMounted(async () => {
+    // Auto-rellenar datos personales desde localStorage
+    const savedDni = localStorage.getItem('autoreclama_dni')
+    if (savedDni) {
+        try {
+            const res = await fetch(`${API}/reclamaciones/${savedDni}`)
+            if (res.ok) {
+                const data = await res.json()
+                const c = data.cliente
+                form.dni      = c.dni
+                form.nombre   = c.nombre
+                form.apellidos = c.apellidos
+                form.telefono = c.telefono
+                form.email    = c.email
+                datosPrecargados.value = true
+            }
+        } catch { /* sin conexión, se ignora */ }
+    }
+
+    // Pre-rellenar datos del vehículo desde query params
     if (route.query.marca) form.marca = route.query.marca
     if (route.query.modelo) {
         setTimeout(() => { form.modelo = route.query.modelo }, 50)
@@ -273,6 +294,17 @@ onMounted(() => {
             <!-- ── PASO 1: Datos Personales ── -->
             <Transition name="slide" mode="out-in">
             <div v-if="currentStep === 1" key="paso1">
+                <!-- Banner datos precargados -->
+                <Transition name="fade">
+                    <div v-if="datosPrecargados" class="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
+                        <span class="material-icons text-primary text-base shrink-0">auto_awesome</span>
+                        <span class="text-slate-700 dark:text-slate-300">Hemos rellenado tus datos automáticamente. Revísalos y corrígelos si es necesario.</span>
+                        <button type="button" @click="datosPrecargados = false" class="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0">
+                            <span class="material-icons text-base">close</span>
+                        </button>
+                    </div>
+                </Transition>
+
                 <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
                     <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
                         <span class="material-icons text-primary">person</span>
