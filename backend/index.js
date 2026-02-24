@@ -3,6 +3,14 @@ const cors = require('cors');
 const Database = require('better-sqlite3');
 const path = require('path');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+
+// Transporter de MailHog (SMTP en puerto 1025)
+const transporter = nodemailer.createTransport({
+    host: process.env.MAILHOG_HOST || 'mailhog',
+    port: 1025,
+    ignoreTLS: true
+});
 
 const app = express();
 const PORT = 3000;
@@ -180,16 +188,30 @@ app.get('/api/admin/clientes/:id/vehiculos', (req, res) => {
 });
 
 // Cambiar estado de resolución
-app.put('/api/admin/clientes/:id/estado', (req, res) => {
+app.put('/api/admin/clientes/:id/estado', async (req, res) => {
     const { estado } = req.body;
     const estadosValidos = ['pendiente', 'en trámite', 'resuelto', 'rechazado'];
     if (!estadosValidos.includes(estado)) {
         return res.status(400).json({ error: 'Estado no válido' });
     }
 
-    const result = db.prepare('UPDATE clientes SET estado = ? WHERE id = ?').run(estado, req.params.id);
-    if (result.changes === 0) {
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ?').get(req.params.id);
+    if (!cliente) {
         return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    db.prepare('UPDATE clientes SET estado = ? WHERE id = ?').run(estado, req.params.id);
+
+    // Enviar correo
+    try {
+        await transporter.sendMail({
+            from: 'autoreclama@autoreclama.es',
+            to: cliente.email,
+            subject: `AutoReclama – Estado actualizado: ${estado}`,
+            text: `Hola ${cliente.nombre},\n\nTu reclamación ha cambiado de estado a: ${estado.toUpperCase()}.\n\nGracias por usar AutoReclama.`
+        });
+    } catch (err) {
+        console.error('Error enviando correo:', err.message);
     }
 
     res.json({ ok: true, mensaje: 'Estado actualizado' });

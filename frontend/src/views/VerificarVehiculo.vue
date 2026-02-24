@@ -59,7 +59,7 @@ async function verificar() {
 function irAReclamar() {
     router.push({
         path: '/reclamar',
-        query: { marca: form.marca, modelo: form.modelo, anio: form.anio }
+        state: { marca: form.marca, modelo: form.modelo, anio: form.anio }
     })
 }
 </script>

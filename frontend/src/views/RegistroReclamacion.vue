@@ -1,12 +1,11 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import BaseInput from '../components/BaseInput.vue'
 import SelectField from '../components/SelectField.vue'
 import ButtonPrimary from '../components/ButtonPrimary.vue'
 
 const API = 'http://localhost:3000/api'
-const route = useRoute()
 const router = useRouter()
 
 const marcasModelos = {
@@ -212,11 +211,12 @@ onMounted(async () => {
     }
 
     // Pre-rellenar datos del vehículo desde query params
-    if (route.query.marca) form.marca = route.query.marca
-    if (route.query.modelo) {
-        setTimeout(() => { form.modelo = route.query.modelo }, 50)
+    const vehiculo = window.history.state
+    if (vehiculo.marca) form.marca = vehiculo.marca
+    if (vehiculo.modelo) {
+        setTimeout(() => { form.modelo = vehiculo.modelo }, 50)
     }
-    if (route.query.anio) form.anio = route.query.anio
+    if (vehiculo.anio) form.anio = vehiculo.anio
 })
 </script>
 
